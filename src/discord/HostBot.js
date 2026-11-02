@@ -84,7 +84,19 @@ export async function startHostBot(host, token) {
   });
 
   console.log("Connecting host bot to Discord:", host.name);
-  await client.login(token);
+  let loginTimeout;
+  try {
+    await Promise.race([
+      client.login(token),
+      new Promise((_, reject) => { loginTimeout = setTimeout(() => reject(new Error("Discord Gateway login timed out after 30 seconds.")), 30_000); }),
+    ]);
+    console.log("Host bot gateway connected; waiting for READY:", host.name);
+  } catch (error) {
+    client.destroy();
+    throw error;
+  } finally {
+    clearTimeout(loginTimeout);
+  }
   const stopRecoveryWorker = startHostRecoveryWorker(client, host, token);
   return {
     client,
