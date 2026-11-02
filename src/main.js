@@ -20,6 +20,7 @@ async function syncHostRuntime() {
   const host = await BotHost.findById(config.hostId).lean();
   if (!host) throw new Error("HOST_ID에 해당하는 호기 설정이 MongoDB에 없습니다.");
   if (!host.enabled) {
+    console.warn("Host bot is disabled in MongoDB:", host.name, String(host._id));
     await stopRuntime();
     await BotHost.updateOne({ _id: host._id }, { $set: { runtimeHeartbeatAt: null, runtimeUsername: "" } });
     return;
@@ -29,19 +30,21 @@ async function syncHostRuntime() {
   if (runtime && currentFingerprint === fingerprint) return;
 
   await stopRuntime();
-  const botToken = decryptSecret(host.botToken, config.tokenEncryptionKey);
   try {
+    console.log("Starting host Discord bot:", host.name, String(host._id));
+    const botToken = decryptSecret(host.botToken, config.tokenEncryptionKey);
     runtime = await startHostBot(host, botToken);
     currentFingerprint = fingerprint;
   } catch (error) {
     await BotHost.updateOne({ _id: host._id }, { $set: { runtimeHeartbeatAt: null, runtimeUsername: "" } }).catch(() => {});
+    console.error("Host bot startup failed:", error?.message ?? error?.name ?? "UnknownError");
     throw error;
   }
 }
 
 await syncHostRuntime();
 const configRefreshTimer = setInterval(() => {
-  void syncHostRuntime().catch((error) => console.error("Host settings refresh failed:", error?.name ?? "UnknownError"));
+  void syncHostRuntime().catch((error) => console.error("Host settings refresh failed:", error?.message ?? error?.name ?? "UnknownError"));
 }, 15_000);
 configRefreshTimer.unref?.();
 

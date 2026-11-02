@@ -21,6 +21,12 @@ export async function startHostBot(host, token) {
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   let heartbeatTimer;
   let stopPresence;
+  client.on("error", (error) => console.error("Host bot client error:", error?.message ?? error?.name ?? "UnknownError"));
+  client.on("shardError", (error, shardId) => console.error("Host bot gateway error:", { shardId, message: error?.message ?? error?.name ?? "UnknownError" }));
+  client.on("shardDisconnect", (event, shardId) => {
+    console.error("Host bot gateway disconnected:", { shardId, code: event?.code, reason: event?.reason?.toString?.() ?? "" });
+    void writeHeartbeat(false).catch(() => {});
+  });
 
   async function writeHeartbeat(online) {
     await BotHost.updateOne({ _id: config.hostId }, { $set: {
@@ -42,7 +48,6 @@ export async function startHostBot(host, token) {
     console.log("Host bot online:", host.name, client.user?.tag ?? "");
   });
 
-  client.on("shardDisconnect", () => { void writeHeartbeat(false).catch(() => {}); });
   client.on("shardReady", () => { void writeHeartbeat(true).catch(() => {}); });
   client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
@@ -78,6 +83,7 @@ export async function startHostBot(host, token) {
     }
   });
 
+  console.log("Connecting host bot to Discord:", host.name);
   await client.login(token);
   const stopRecoveryWorker = startHostRecoveryWorker(client, host, token);
   return {

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 
 const pagePath = fileURLToPath(new URL("./index.html", import.meta.url));
+const faviconPath = fileURLToPath(new URL("./assets/favicon.png", import.meta.url));
 
 function getHealthSnapshot(getRuntime) {
   const runtime = getRuntime();
@@ -20,7 +21,7 @@ function getHealthSnapshot(getRuntime) {
 
 export async function startHealthServer(getRuntime, port = Number(process.env.PORT || 3001)) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("PORT must be a valid TCP port.");
-  const page = await readFile(pagePath);
+  const [page, favicon] = await Promise.all([readFile(pagePath), readFile(faviconPath)]);
   const server = createServer((request, response) => {
     if (request.method !== "GET") {
       response.writeHead(405, { Allow: "GET" }).end();
@@ -32,6 +33,14 @@ export async function startHealthServer(getRuntime, port = Number(process.env.PO
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
       }).end(JSON.stringify(snapshot));
+      return;
+    }
+    if (request.url === "/favicon.png") {
+      response.writeHead(200, {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=86400",
+        "X-Content-Type-Options": "nosniff",
+      }).end(favicon);
       return;
     }
     if (request.url === "/" || request.url === "/index.html") {
