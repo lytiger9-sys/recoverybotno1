@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>호기 상태</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; background: #0d0d0e; color: #f2f2f3; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; }
+    main { width: min(100%, 560px); padding: 30px; border: 1px solid #303033; border-radius: 14px; background: #171719; }
+    .eyebrow { margin: 0 0 8px; color: #aaaab1; font-size: 12px; font-weight: 700; letter-spacing: .14em; }
+    h1 { margin: 0; font-size: 28px; }
+    .summary { margin: 10px 0 24px; color: #a9a9b0; }
+    .checks { display: grid; gap: 10px; }
+    .check { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 16px; border: 1px solid #303033; border-radius: 9px; background: #111113; }
+    .check span:first-child { color: #c7c7cd; }
+    .state { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #ed4245; }
+    .state.online .dot { background: #35c879; }
+    footer { margin-top: 20px; color: #85858c; font-size: 12px; }
+    @media (max-width: 480px) { main { padding: 22px; } h1 { font-size: 24px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">RECOVERY HOST</p>
+    <h1>호기 서비스 상태</h1>
+    <p id="summary" class="summary">상태를 확인하고 있습니다.</p>
+    <section class="checks" aria-live="polite">
+      <div class="check"><span>Discord 봇</span><strong id="discord" class="state"><i class="dot"></i><span>확인 중</span></strong></div>
+      <div class="check"><span>MongoDB</span><strong id="database" class="state"><i class="dot"></i><span>확인 중</span></strong></div>
+    </section>
+    <footer>마지막 확인: <time id="checked-at">-</time> · 15초마다 자동 갱신</footer>
+  </main>
+  <script>
+    const labels = { online: "온라인", offline: "오프라인" };
+    async function refresh() {
+      try {
+        const response = await fetch("/health", { cache: "no-store" });
+        const state = await response.json();
+        for (const key of ["discord", "database"]) {
+          const element = document.getElementById(key);
+          const value = state[key] === "online" ? "online" : "offline";
+          element.classList.toggle("online", value === "online");
+          element.querySelector("span").textContent = labels[value];
+        }
+        document.getElementById("summary").textContent = state.status === "online" ? "모든 서비스가 정상 작동 중입니다." : "일부 서비스에 연결할 수 없습니다.";
+        document.getElementById("checked-at").textContent = new Date(state.checkedAt).toLocaleString("ko-KR");
+      } catch {
+        document.getElementById("summary").textContent = "상태 정보를 가져오지 못했습니다.";
+      }
+    }
+    void refresh();
+    window.setInterval(refresh, 15000);
+  </script>
+</body>
+</html>

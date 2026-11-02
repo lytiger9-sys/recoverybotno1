@@ -3,10 +3,12 @@ import { connectDatabase, disconnectDatabase } from "./database.js";
 import { BotHost } from "./models/BotHost.js";
 import { decryptSecret } from "./security/secretEncryption.js";
 import { startHostBot } from "./discord/HostBot.js";
+import { startHealthServer } from "./health/HealthServer.js";
 
 await connectDatabase(config.mongodbUri);
 let runtime;
 let currentFingerprint = "";
+const stopHealthServer = await startHealthServer(() => runtime);
 
 async function stopRuntime() {
   await runtime?.stop();
@@ -46,6 +48,7 @@ configRefreshTimer.unref?.();
 async function shutdown() {
   clearInterval(configRefreshTimer);
   await stopRuntime();
+  await stopHealthServer();
   await disconnectDatabase();
   process.exit(0);
 }

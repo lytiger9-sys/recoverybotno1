@@ -10,6 +10,7 @@
 4. 실행기와 각 호기 프로젝트 `.env`에 같은 MongoDB URI와 `TOKEN_ENCRYPTION_KEY`를 설정합니다.
 5. `PUBLIC_BASE_URL`을 공개 웹사이트 주소로 설정하고, 이 호기 `.env`의 `HOST_ID`에 복사한 ID를 입력합니다.
 6. 실행기와 각 호기 프로젝트를 서로 다른 터미널에서 각각 시작합니다. 실행기는 웹사이트와 메인봇을, 각 호기 프로젝트는 자기 호기 봇만 실행합니다.
+7. 이 호기의 헬스체크 페이지는 `http://localhost:PORT/`이며, 호스팅 플랫폼에서는 해당 서비스의 공개 URL을 사용합니다. `PORT`는 플랫폼이 지정한 값을 자동으로 사용하고, 로컬 기본값은 `3001`입니다. `/health`는 Discord 봇과 MongoDB 상태를 JSON 및 HTTP 상태 코드로 제공합니다.
 
 ```powershell
 npm install
