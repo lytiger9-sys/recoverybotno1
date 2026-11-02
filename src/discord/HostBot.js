@@ -1,0 +1,93 @@
+import {
+  Client,
+  GatewayIntentBits,
+  MessageFlags,
+  PermissionFlagsBits,
+  SlashCommandBuilder,
+} from "discord.js";
+import { config } from "../config.js";
+import { BotHost } from "../models/BotHost.js";
+import { AuthPanel } from "../models/AuthPanel.js";
+import { buildAuthPanel, buildResultCard } from "./panels.js";
+import { startHostRecoveryWorker } from "../services/HostRecoveryWorker.js";
+import { startHostPresence } from "../services/HostPresence.js";
+
+const authPanelCommand = new SlashCommandBuilder()
+  .setName("인증패널")
+  .setDescription("현재 채널에 유저 인증 패널을 게시합니다.")
+  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+  .addRoleOption((option) => option.setName("역할").setDescription("인증 후 지급할 역할").setRequired(true));
+export async function startHostBot(host, token) {
+  const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+  let heartbeatTimer;
+  let stopPresence;
+
+  async function writeHeartbeat(online) {
+    await BotHost.updateOne({ _id: config.hostId }, { $set: {
+      runtimeHeartbeatAt: online ? new Date() : null,
+      runtimeUsername: online ? String(client.user?.tag ?? client.user?.username ?? "") : "",
+    } });
+  }
+
+  client.once("ready", async () => {
+    try {
+      await client.application.commands.set([authPanelCommand.toJSON()]);
+    } catch (error) {
+      console.error("Slash command sync failed:", error?.name ?? "UnknownError");
+    }
+    await writeHeartbeat(true).catch((error) => console.error("Heartbeat write failed:", error?.name ?? "UnknownError"));
+    stopPresence = startHostPresence(client, config.hostId);
+    heartbeatTimer = setInterval(() => { void writeHeartbeat(client.isReady()).catch((error) => console.error("Heartbeat write failed:", error?.name ?? "UnknownError")); }, 15_000);
+    heartbeatTimer.unref?.();
+    console.log("Host bot online:", host.name, client.user?.tag ?? "");
+  });
+
+  client.on("shardDisconnect", () => { void writeHeartbeat(false).catch(() => {}); });
+  client.on("shardReady", () => { void writeHeartbeat(true).catch(() => {}); });
+  client.on("interactionCreate", async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+    try {
+      if (interaction.commandName === "인증패널") {
+        if (!interaction.inGuild() || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+          return interaction.reply({ flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2, components: [buildResultCard("권한 없음", ["서버 관리자만 인증 패널을 게시할 수 있습니다."])] });
+        }
+        const role = interaction.options.getRole("역할", true);
+        const panel = await AuthPanel.create({
+          hostId: config.hostId,
+          guildId: interaction.guildId,
+          guildName: interaction.guild.name,
+          roleId: role.id,
+          roleName: role.name,
+          channelId: interaction.channelId,
+        });
+        const authUrl = config.publicBaseUrl + "/oauth/start/" + config.hostId + "/" + panel.id;
+        try {
+          await interaction.channel.send({ flags: MessageFlags.IsComponentsV2, components: [buildAuthPanel(host.name, authUrl)] });
+        } catch (error) {
+          await AuthPanel.deleteOne({ _id: panel._id }).catch(() => {});
+          throw error;
+        }
+        return interaction.reply({ flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2, components: [buildResultCard("인증 패널 게시 완료", ["현재 채널에 게시했습니다.", "인증 완료 시 " + role.toString() + " 역할을 지급합니다."])] });
+      }
+
+    } catch (error) {
+      console.error("Host bot command failed:", error?.name ?? "UnknownError");
+      const card = buildResultCard("요청 처리 실패", [error?.message ?? "잠시 후 다시 시도해 주세요."], 0xed4245);
+      if (interaction.deferred || interaction.replied) await interaction.editReply({ flags: MessageFlags.IsComponentsV2, components: [card] }).catch(() => {});
+      else await interaction.reply({ flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2, components: [card] }).catch(() => {});
+    }
+  });
+
+  await client.login(token);
+  const stopRecoveryWorker = startHostRecoveryWorker(client, host, token);
+  return {
+    client,
+    async stop() {
+      clearInterval(heartbeatTimer);
+      stopPresence?.();
+      stopRecoveryWorker();
+      await writeHeartbeat(false).catch(() => {});
+      client.destroy();
+    },
+  };
+}
