@@ -11,6 +11,7 @@ import { AuthPanel } from "../models/AuthPanel.js";
 import { buildAuthPanel, buildResultCard } from "./panels.js";
 import { startHostRecoveryWorker } from "../services/HostRecoveryWorker.js";
 import { startHostPresence } from "../services/HostPresence.js";
+import { probeDiscordGatewayRest } from "./DiscordGatewayProbe.js";
 
 const authPanelCommand = new SlashCommandBuilder()
   .setName("인증패널")
@@ -89,6 +90,7 @@ export async function startHostBot(host, token) {
   });
 
   console.log("Connecting host bot to Discord:", host.name);
+  await probeDiscordGatewayRest(token, "Host bot");
   let loginTimeout;
   try {
     await Promise.race([
