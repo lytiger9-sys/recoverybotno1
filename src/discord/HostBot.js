@@ -22,6 +22,11 @@ export async function startHostBot(host, token) {
   let heartbeatTimer;
   let stopPresence;
   client.on("error", (error) => console.error("Host bot client error:", error?.message ?? error?.name ?? "UnknownError"));
+  client.on("debug", (message) => {
+    if (/Preparing to connect to the gateway|Fetched Gateway Information|Connecting to wss:|Waiting for identify|Sending IDENTIFY|network error/i.test(message)) {
+      console.log("Host bot gateway stage:", message);
+    }
+  });
   client.on("shardError", (error, shardId) => console.error("Host bot gateway error:", { shardId, message: error?.message ?? error?.name ?? "UnknownError" }));
   client.on("shardDisconnect", (event, shardId) => {
     console.error("Host bot gateway disconnected:", { shardId, code: event?.code, reason: event?.reason?.toString?.() ?? "" });
