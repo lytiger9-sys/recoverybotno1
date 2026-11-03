@@ -12,6 +12,7 @@ import { buildAuthPanel, buildResultCard } from "./panels.js";
 import { startHostRecoveryWorker } from "../services/HostRecoveryWorker.js";
 import { startHostPresence } from "../services/HostPresence.js";
 import { probeDiscordGatewayRest } from "./DiscordGatewayProbe.js";
+import { syncGuildCommands } from "./commandSync.js";
 
 const authPanelCommand = new SlashCommandBuilder()
   .setName("인증패널")
@@ -42,17 +43,13 @@ export async function startHostBot(host, token) {
   }
 
   client.once("ready", async () => {
-    try {
-      await client.application.commands.set([authPanelCommand.toJSON()]);
-    } catch (error) {
-      console.error("Slash command sync failed:", error?.name ?? "UnknownError");
-    }
     await writeHeartbeat(true).catch((error) => console.error("Heartbeat write failed:", error?.name ?? "UnknownError"));
     stopPresence = startHostPresence(client, config.hostId);
     heartbeatTimer = setInterval(() => { void writeHeartbeat(client.isReady()).catch((error) => console.error("Heartbeat write failed:", error?.name ?? "UnknownError")); }, 15_000);
     heartbeatTimer.unref?.();
     console.log("Host bot online:", host.name, client.user?.tag ?? "");
   });
+  syncGuildCommands(client, [authPanelCommand], host.name);
 
   client.on("shardReady", () => { void writeHeartbeat(true).catch(() => {}); });
   client.on("interactionCreate", async (interaction) => {
