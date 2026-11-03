@@ -17,7 +17,6 @@ import { syncGuildCommands } from "./commandSync.js";
 const authPanelCommand = new SlashCommandBuilder()
   .setName("인증패널")
   .setDescription("현재 채널에 유저 인증 패널을 게시합니다.")
-  .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .addRoleOption((option) => option.setName("역할").setDescription("인증 후 지급할 역할").setRequired(true));
 export async function startHostBot(host, token) {
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
