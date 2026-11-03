@@ -78,18 +78,39 @@ async function refreshUserToken(host, user) {
   return data.access_token;
 }
 
+async function isGuildMember(guildId, userId, botToken) {
+  const response = await discordRequest(API + "/guilds/" + guildId + "/members/" + userId, { headers: botHeaders(botToken) });
+  if (response.status === 200) return true;
+  if (response.status === 404) return false;
+  if (response.status === 429) throw new WorkerStop("discord_429", "대상 멤버 확인 중 Discord 요청 제한이 지속되어 복구를 중단했습니다.");
+  if (response.status === 401) throw new WorkerStop("host_auth_failed", "호기 봇 토큰 인증에 실패했습니다.");
+  throw new WorkerStop("member_check_failed", "Discord에서 대상 유저의 서버 가입 상태를 확인하지 못했습니다. HTTP " + response.status);
+}
+
 async function addUser(host, user, guildId, botToken, client) {
   let accessToken = storedPlaintext(user.accessToken);
   const url = API + "/guilds/" + guildId + "/members/" + user.discordUserId;
   const headers = { ...botHeaders(botToken), "Content-Type": "application/json" };
-  let response = await discordRequest(url, { method: "PUT", headers, body: JSON.stringify({ access_token: accessToken }) });
+  const addMember = (token) => discordRequest(url, { method: "PUT", headers, body: JSON.stringify({ access_token: token }) });
+  let response = await addMember(accessToken);
   if (response.status === 401) {
     accessToken = await refreshUserToken(host, user);
     if (!accessToken) return { kind: "failed", reason: "oauth_revoked" };
-    response = await discordRequest(url, { method: "PUT", headers, body: JSON.stringify({ access_token: accessToken }) });
+    response = await addMember(accessToken);
   }
   if (response.status === 201 || response.status === 200) return { kind: "succeeded" };
-  if (response.status === 204) return { kind: "alreadyMember" };
+  if (response.status === 204) {
+    await pause(500);
+    if (await isGuildMember(guildId, user.discordUserId, botToken)) return { kind: "alreadyMember" };
+
+    response = await addMember(accessToken);
+    if (response.status === 201 || response.status === 200) return { kind: "succeeded" };
+    if (response.status === 204) {
+      await pause(500);
+      if (await isGuildMember(guildId, user.discordUserId, botToken)) return { kind: "alreadyMember" };
+      return { kind: "failed", reason: "membership_mismatch" };
+    }
+  }
   if (response.status === 429) throw new WorkerStop("discord_429", "Discord 요청 제한이 재시도 후에도 지속되어 복구를 중단했습니다.");
   if (!client.isReady()) throw new WorkerStop("host_offline", "호기 봇이 오프라인이 되어 복구를 중단했습니다.");
   if (response.status === 403 || response.status === 404) await assertGuildReady(guildId, botToken, client);
