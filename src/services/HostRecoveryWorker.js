@@ -105,8 +105,8 @@ async function stopRun(run, task, message, reason) {
   const finalRun = await RecoveryRun.findById(run._id).lean();
   if (run.licenseId) await License.updateOne({ _id: run.licenseId, status: "IN_PROGRESS" }, { $set: {
     status: "FAILED", completedAt, activeRequestId: null,
-    recoverySucceeded: Number(finalRun?.succeeded ?? 0) + Number(finalRun?.alreadyMember ?? 0),
-    recoveryTotal: Number(finalRun?.total ?? 0), failureReason: message,
+    recoverySucceeded: Array.isArray(finalRun?.completedUserIds) ? finalRun.completedUserIds.length : Number(finalRun?.succeeded ?? 0) + Number(finalRun?.alreadyMember ?? 0),
+    recoveryTotal: Number(finalRun?.overallTotal ?? finalRun?.total ?? 0), failureReason: message,
   } });
 }
 
@@ -124,12 +124,14 @@ async function executeTask(task, client, host, botToken) {
   ]);
   try {
     await assertGuildReady(run.targetGuildId, botToken, client);
-    const users = await RestoredUser.find({ hostId: host._id, status: "ACTIVE" }).sort({ createdAt: 1 }).lean();
+    const userFilter = { hostId: host._id, status: "ACTIVE" };
+    if (Array.isArray(run.targetUserIds)) userFilter._id = { $in: run.targetUserIds };
+    const users = await RestoredUser.find(userFilter).sort({ createdAt: 1 }).lean();
     const startedMs = Date.now();
     for (let index = 0; index < users.length; index += 1) {
       if (!client.isReady()) throw new WorkerStop("host_offline", "호기 봇이 오프라인이 되어 복구를 중단했습니다.");
       const outcome = await addUser(host, users[index], run.targetGuildId, botToken, client);
-      const remaining = Math.max(0, Number(run.total) - Number(run.processed) - 1);
+      const remaining = Math.max(0, users.length - index - 1);
       await Promise.all([
         RecoveryHostTask.updateOne({ _id: task._id }, {
           $inc: { processed: 1, [outcome.kind]: 1 }, $set: { heartbeatAt: new Date() },
@@ -144,6 +146,7 @@ async function executeTask(task, client, host, botToken) {
             currentHostId: host._id, currentHostName: host.name,
             estimatedRemainingSeconds: Math.ceil(remaining * (Number(run.delayMs ?? 2000) + (Date.now() - startedMs) / (index + 1)) / 1000),
           },
+          ...(outcome.kind === "succeeded" || outcome.kind === "alreadyMember" ? { $addToSet: { completedUserIds: users[index]._id } } : {}),
         }),
       ]);
       if (index + 1 < users.length) await pause(Math.max(1000, Number(run.delayMs ?? 2000)));
