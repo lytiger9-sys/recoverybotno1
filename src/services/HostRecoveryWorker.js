@@ -39,7 +39,13 @@ async function assertGuildReady(guildId, token, client) {
   const memberResponse = await discordRequest(API + "/guilds/" + guildId + "/members/" + me.id, { headers: botHeaders(token) });
   if (!memberResponse.ok) throw new WorkerStop("host_left_guild", "호기 봇이 대상 서버에 없습니다.");
   const member = await memberResponse.json();
-  const roles = new Map((guild.roles ?? []).map((role) => [role.id, BigInt(role.permissions)]));
+  let roleList = guild.roles;
+  if (!Array.isArray(roleList) || roleList.length === 0) {
+    const rolesResponse = await discordRequest(API + "/guilds/" + guildId + "/roles", { headers: botHeaders(token) });
+    if (!rolesResponse.ok) throw new WorkerStop("bot_permission_lost", "호기 봇의 서버 역할 권한을 확인할 수 없습니다.");
+    roleList = await rolesResponse.json();
+  }
+  const roles = new Map(roleList.map((role) => [role.id, BigInt(role.permissions)]));
   const permissions = [guild.id, ...(member.roles ?? [])].reduce((bits, roleId) => bits | (roles.get(roleId) ?? 0n), 0n);
   if ((permissions & 8n) !== 8n && (permissions & 1n) !== 1n) {
     throw new WorkerStop("bot_permission_lost", "호기 봇에 멤버 추가에 필요한 권한이 없습니다.");
